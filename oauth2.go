@@ -54,8 +54,8 @@ type Options struct {
 	RedirectURL  string
 	Scopes       []string
 
-	AuthUrl  string
-	TokenUrl string
+	AuthURL  string
+	TokenURL string
 }
 
 // Represents a container that contains
@@ -108,21 +108,21 @@ func (t *token) String() string {
 
 // Returns a new Google OAuth 2.0 backend endpoint.
 func Google(opts *Options) martini.Handler {
-	opts.AuthUrl = "https://accounts.google.com/o/oauth2/auth"
-	opts.TokenUrl = "https://accounts.google.com/o/oauth2/token"
+	opts.AuthURL = "https://accounts.google.com/o/oauth2/auth"
+	opts.TokenURL = "https://accounts.google.com/o/oauth2/token"
 	return NewOAuth2Provider(opts)
 }
 
 // Returns a new Github OAuth 2.0 backend endpoint.
 func Github(opts *Options) martini.Handler {
-	opts.AuthUrl = "https://github.com/login/oauth/authorize"
-	opts.TokenUrl = "https://github.com/login/oauth/access_token"
+	opts.AuthURL = "https://github.com/login/oauth/authorize"
+	opts.TokenURL = "https://github.com/login/oauth/access_token"
 	return NewOAuth2Provider(opts)
 }
 
 func Facebook(opts *Options) martini.Handler {
-	opts.AuthUrl = "https://www.facebook.com/dialog/oauth"
-	opts.TokenUrl = "https://graph.facebook.com/oauth/access_token"
+	opts.AuthURL = "https://www.facebook.com/dialog/oauth"
+	opts.TokenURL = "https://graph.facebook.com/oauth/access_token"
 	return NewOAuth2Provider(opts)
 }
 
@@ -133,8 +133,8 @@ func NewOAuth2Provider(opts *Options) martini.Handler {
 		ClientSecret: opts.ClientSecret,
 		RedirectURL:  opts.RedirectURL,
 		Scope:        strings.Join(opts.Scopes, " "),
-		AuthURL:      opts.AuthUrl,
-		TokenURL:     opts.TokenUrl,
+		AuthURL:      opts.AuthURL,
+		TokenURL:     opts.TokenURL,
 	}
 
 	transport := &oauth.Transport{
