@@ -52,6 +52,10 @@ type Options struct {
 	ClientId     string
 	ClientSecret string
 	RedirectURL  string
+	// Accepts a func to generate the redirect URL based on the request. Useful
+	// if you want to redirect to a relative path. Takes precedence over
+	// RedirectURL if both are set.
+	RedirectFunc RedirectFunc
 	Scopes       []string
 
 	AuthURL  string
@@ -128,29 +132,15 @@ func Facebook(opts *Options) martini.Handler {
 
 // Returns a generic OAuth 2.0 backend endpoint.
 func NewOAuth2Provider(opts *Options) martini.Handler {
-	config := &oauth.Config{
-		ClientId:     opts.ClientId,
-		ClientSecret: opts.ClientSecret,
-		RedirectURL:  opts.RedirectURL,
-		Scope:        strings.Join(opts.Scopes, " "),
-		AuthURL:      opts.AuthURL,
-		TokenURL:     opts.TokenURL,
-	}
-
-	transport := &oauth.Transport{
-		Config:    config,
-		Transport: http.DefaultTransport,
-	}
-
 	return func(s sessions.Session, c martini.Context, w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			switch r.URL.Path {
 			case PathLogin:
-				login(transport, s, w, r)
+				login(opts, s, w, r)
 			case PathLogout:
-				logout(transport, s, w, r)
+				logout(opts, s, w, r)
 			case PathCallback:
-				handleOAuth2Callback(transport, s, w, r)
+				handleOAuth2Callback(opts, s, w, r)
 			}
 		}
 
@@ -181,10 +171,30 @@ var LoginRequired martini.Handler = func() martini.Handler {
 	}
 }()
 
-func login(t *oauth.Transport, s sessions.Session, w http.ResponseWriter, r *http.Request) {
+type RedirectFunc func(*http.Request) string
+
+func RedirectRelativeFunc(path string) RedirectFunc {
+	return func(req *http.Request) string {
+		proto := "http"
+		if strings.EqualFold(req.URL.Scheme, "https") ||
+			req.TLS != nil ||
+			req.Header.Get("X-Forwarded-Proto") == "https" ||
+			req.Header.Get("X-SSL-Request") == "on" {
+			proto = "https"
+		}
+		host := req.Host
+		if host == "" {
+			host = "localhost"
+		}
+		return proto + "://" + host + path
+	}
+}
+
+func login(opts *Options, s sessions.Session, w http.ResponseWriter, r *http.Request) {
 	next := extractPath(r.URL.Query().Get(keyNextPage))
 	if s.Get(keyToken) == nil {
 		// User is not logged in.
+		t := makeTransport(opts, r)
 		http.Redirect(w, r, t.Config.AuthCodeURL(next), codeRedirect)
 		return
 	}
@@ -192,13 +202,14 @@ func login(t *oauth.Transport, s sessions.Session, w http.ResponseWriter, r *htt
 	http.Redirect(w, r, next, codeRedirect)
 }
 
-func logout(t *oauth.Transport, s sessions.Session, w http.ResponseWriter, r *http.Request) {
+func logout(opts *Options, s sessions.Session, w http.ResponseWriter, r *http.Request) {
 	next := extractPath(r.URL.Query().Get(keyNextPage))
 	s.Delete(keyToken)
 	http.Redirect(w, r, next, codeRedirect)
 }
 
-func handleOAuth2Callback(t *oauth.Transport, s sessions.Session, w http.ResponseWriter, r *http.Request) {
+func handleOAuth2Callback(opts *Options, s sessions.Session, w http.ResponseWriter, r *http.Request) {
+	t := makeTransport(opts, r)
 	next := extractPath(r.URL.Query().Get("state"))
 	code := r.URL.Query().Get("code")
 	tk, err := t.Exchange(code)
@@ -212,6 +223,25 @@ func handleOAuth2Callback(t *oauth.Transport, s sessions.Session, w http.Respons
 	val, _ := json.Marshal(tk)
 	s.Set(keyToken, val)
 	http.Redirect(w, r, next, codeRedirect)
+}
+
+func makeTransport(opts *Options, req *http.Request) (transport *oauth.Transport) {
+	config := &oauth.Config{
+		ClientId:     opts.ClientId,
+		ClientSecret: opts.ClientSecret,
+		RedirectURL:  opts.RedirectURL,
+		Scope:        strings.Join(opts.Scopes, " "),
+		AuthURL:      opts.AuthURL,
+		TokenURL:     opts.TokenURL,
+	}
+	if opts.RedirectFunc != nil {
+		config.RedirectURL = opts.RedirectFunc(req)
+	}
+
+	return &oauth.Transport{
+		Config:    config,
+		Transport: http.DefaultTransport,
+	}
 }
 
 func unmarshallToken(s sessions.Session) (t *token) {

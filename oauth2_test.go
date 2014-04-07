@@ -17,6 +17,7 @@ package oauth2
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/go-martini/martini"
@@ -43,6 +44,34 @@ func Test_LoginRedirect(t *testing.T) {
 	}
 	if location != "https://accounts.google.com/o/oauth2/auth?access_type=&approval_prompt=&client_id=client_id&redirect_uri=refresh_url&response_type=code&scope=x+y&state=" {
 		t.Errorf("Not being redirected to the right page, %v found", location)
+	}
+}
+
+func Test_LoginRedirectFunc(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	m := martini.New()
+	m.Use(sessions.Sessions("my_session", sessions.NewCookieStore([]byte("secret123"))))
+	m.Use(Google(&Options{
+		RedirectFunc: RedirectRelativeFunc("/auth/callback/google"),
+	}))
+
+	r, _ := http.NewRequest("GET", "/login", nil)
+	m.ServeHTTP(recorder, r)
+
+	location := recorder.HeaderMap["Location"][0]
+	if recorder.Code != 302 {
+		t.Errorf("Not being redirected to the auth page.")
+	}
+	u, err := url.Parse(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri, err := url.QueryUnescape(u.Query().Get("redirect_uri"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri != "http://localhost/auth/callback/google" {
+		t.Errorf("Not being redirected to the right URL, %v found", uri)
 	}
 }
 
